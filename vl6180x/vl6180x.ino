@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include "Adafruit_I2CDevice.h" 
 #include "Adafruit_VL6180X.h"
 
 // address we will assign if dual sensor is present
@@ -16,6 +17,8 @@
 //#define GPIO_LOX2 3
 //#define GPIO_LOX3 2
 
+#define WINDOW_SIZE 20
+
 // objects for the VL6180X
 Adafruit_VL6180X lox1 = Adafruit_VL6180X();
 Adafruit_VL6180X lox2 = Adafruit_VL6180X();
@@ -24,10 +27,11 @@ Adafruit_VL6180X lox3 = Adafruit_VL6180X();
 Adafruit_VL6180X *sensors[] = {&lox1, &lox2, &lox3};
 
 const uint8_t COUNT_SENSORS = sizeof(sensors) / sizeof(sensors[0]);
-//const int sensor_gpios[COUNT_SENSORS] = {GPIO_LOX1, GPIO_LOX2, GPIO_LOX3}; // if any are < 0 will poll instead
 
 uint8_t sensor_idx = 0;
-uint8_t sensor_ranges[COUNT_SENSORS];
+uint8_t sensor_range_idxs[COUNT_SENSORS];
+uint8_t sensor_range_samples[COUNT_SENSORS][WINDOW_SIZE];
+uint32_t sensor_range_sums[COUNT_SENSORS];
 uint8_t sensor_status[COUNT_SENSORS];
 
 void setID() {
@@ -85,17 +89,15 @@ void round_robin_read_sensors() {
 
   sensor_status[sensor_idx] = status_lox;
   if (status_lox == VL6180X_ERROR_NONE) {
-    sensor_ranges[sensor_idx] = range_lox;
-  }
+    uint8_t range_idx = sensor_range_idxs[sensor_idx];
 
-  for (int i = 0; i < COUNT_SENSORS; i++) {
-    if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(sensor_ranges[i], DEC);
-    else Serial.print("###");
+    sensor_range_sums[sensor_idx] -= sensor_range_samples[sensor_idx][range_idx]; // Remove the oldest entry from the sum
+    sensor_range_samples[sensor_idx][range_idx] = range_lox; // Add the newest reading to the window
+
+    sensor_range_sums[sensor_idx] += range_lox; // Add the newest reading to the sum
     
-    if (i != COUNT_SENSORS-1) Serial.print(" : ");
+    sensor_range_idxs[sensor_idx] = (range_idx + 1) % WINDOW_SIZE; // Increment the index, and wrap to 0 if it exceeds the window size
   }
-  
-  Serial.println();
   
   sensor_idx = (sensor_idx + 1) % COUNT_SENSORS;
 }
@@ -133,5 +135,15 @@ void setup() {
 
 void loop() {
   round_robin_read_sensors();
+
+  for (int i = 0; i < COUNT_SENSORS; i++) {
+    if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(sensor_range_sums[i] / WINDOW_SIZE, DEC);
+    else Serial.print("###");
+    
+    if (i != COUNT_SENSORS-1) Serial.print(" : ");
+  }
+  
+  Serial.println();
+  
   delay(25);
 }
