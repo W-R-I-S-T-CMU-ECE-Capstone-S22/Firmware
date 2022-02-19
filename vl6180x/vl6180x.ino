@@ -26,12 +26,9 @@ Adafruit_VL6180X *sensors[] = {&lox1, &lox2, &lox3};
 const uint8_t COUNT_SENSORS = sizeof(sensors) / sizeof(sensors[0]);
 //const int sensor_gpios[COUNT_SENSORS] = {GPIO_LOX1, GPIO_LOX2, GPIO_LOX3}; // if any are < 0 will poll instead
 
-uint8_t         sensor_ranges[COUNT_SENSORS];
-uint8_t         sensor_status[COUNT_SENSORS];
-// Could do with uint8_t for 8 sensors, but just in case...
-const uint16_t  ALL_SENSORS_PENDING = ((1 << COUNT_SENSORS) - 1);
-uint16_t        sensors_pending = ALL_SENSORS_PENDING;
-uint32_t        sensor_last_cycle_time;
+uint8_t sensor_idx = 0;
+uint8_t sensor_ranges[COUNT_SENSORS];
+uint8_t sensor_status[COUNT_SENSORS];
 
 void setID() {
   // all reset
@@ -82,24 +79,25 @@ void setID() {
   lox3.setAddress(LOX3_ADDRESS);
 }
 
-void timed_read_sensors() {
-  uint8_t range_lox1 = lox1.readRange();
-  uint8_t status_lox1 = lox1.readRangeStatus();
-  uint8_t range_lox2 = lox2.readRange();
-  uint8_t status_lox2 = lox2.readRangeStatus();
-  uint8_t range_lox3 = lox3.readRange();
-  uint8_t status_lox3 = lox3.readRangeStatus();
+void round_robin_read_sensors() {
+  uint8_t range_lox = sensors[sensor_idx]->readRange();
+  uint8_t status_lox = sensors[sensor_idx]->readRangeStatus();
 
-  if (status_lox1 == VL6180X_ERROR_NONE) Serial.print(range_lox1, DEC);
-  else Serial.print("###");
-  Serial.print(" : ");
-  if (status_lox2 == VL6180X_ERROR_NONE) Serial.print(range_lox2, DEC);
-  else Serial.print("###");
-  Serial.print(" : ");
-  if (status_lox3 == VL6180X_ERROR_NONE) Serial.print(range_lox3, DEC);
-  else Serial.print("###");
+  sensor_status[sensor_idx] = status_lox;
+  if (status_lox == VL6180X_ERROR_NONE) {
+    sensor_ranges[sensor_idx] = range_lox;
+  }
 
+  for (int i = 0; i < COUNT_SENSORS; i++) {
+    if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(sensor_ranges[i], DEC);
+    else Serial.print("###");
+    
+    if (i != COUNT_SENSORS-1) Serial.print(" : ");
+  }
+  
   Serial.println();
+  
+  sensor_idx = (sensor_idx + 1) % COUNT_SENSORS;
 }
 
 void setup() {
@@ -114,9 +112,6 @@ void setup() {
   pinMode(SHT_LOX2, OUTPUT);
   pinMode(SHT_LOX3, OUTPUT);
 
-  // Enable timing pin so easy to see when pass starts and ends
-  pinMode(TIMING_PIN, OUTPUT);
-
 #ifdef GPIO_LOX1
   // If we defined GPIO pins, enable them as PULL UP
   pinMode(GPIO_LOX1, INPUT_PULLUP);
@@ -129,7 +124,6 @@ void setup() {
   digitalWrite(SHT_LOX1, LOW);
   digitalWrite(SHT_LOX2, LOW);
   digitalWrite(SHT_LOX3, LOW);
-  digitalWrite(TIMING_PIN, LOW);
   Serial.println("All in reset mode...(pins are low)");
 
 
@@ -138,6 +132,6 @@ void setup() {
 }
 
 void loop() {
-  timed_read_sensors();
-  delay(50);
+  round_robin_read_sensors();
+  delay(25);
 }
