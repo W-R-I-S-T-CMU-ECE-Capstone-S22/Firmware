@@ -1,1 +1,3 @@
-# firmware-test
+# Firmware
+
+Firmware for WRIST.
