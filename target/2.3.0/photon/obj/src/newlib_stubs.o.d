@@ -1,4 +1,4 @@
-/Users/Edward/Desktop/WRIST_Firmware/WRIST_Firmware/target/2.3.0/photon//obj/src/newlib_stubs.o: \
+/Users/Edward/Desktop/WRIST_Firmware/target/2.3.0/photon//obj/src/newlib_stubs.o: \
  src/newlib_stubs.cpp \
  /Users/Edward/.particle/toolchains/gcc-arm/9.2.1/arm-none-eabi/include/sys/types.h \
  /Users/Edward/.particle/toolchains/gcc-arm/9.2.1/arm-none-eabi/include/_ansi.h \

@@ -1,4 +1,4 @@
-/Users/Edward/Desktop/WRIST_Firmware/WRIST_Firmware/target/2.3.0/photon//obj/src/user_export.o: \
+/Users/Edward/Desktop/WRIST_Firmware/target/2.3.0/photon//obj/src/user_export.o: \
  src/user_export.c \
  ../../../modules/shared/stm32f2xx/inc/user_part_export.c \
  ../../../modules/shared/stm32f2xx/inc/module_user_init.h \

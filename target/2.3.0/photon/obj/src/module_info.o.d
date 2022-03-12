@@ -1,4 +1,4 @@
-/Users/Edward/Desktop/WRIST_Firmware/WRIST_Firmware/target/2.3.0/photon//obj/src/module_info.o: \
+/Users/Edward/Desktop/WRIST_Firmware/target/2.3.0/photon//obj/src/module_info.o: \
  src/module_info.c ../../../dynalib/inc/module_info.inc \
  ../../../dynalib/inc/module_info.h ../../../services/inc/static_assert.h \
  /Users/Edward/.particle/toolchains/gcc-arm/9.2.1/arm-none-eabi/include/assert.h \
