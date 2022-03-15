@@ -4,66 +4,69 @@
 
 #include "Particle.h"
 #line 1 "/Users/Edward/Desktop/WRIST_Firmware/src/WRIST_Firmware.ino"
-#include <Wire.h>
-#include "Adafruit_I2CDevice.h"
+#include <MQTT.h>
+#include <SparkFunMAX17043/SparkFunMAX17043.h>
+
 #include "Adafruit_VL6180X.h"
 
-#include <MQTT.h>
-
 // #define PRINT_DATA
+// #define PRINT_BATT
 
-void callback(char *topic, byte *payload, unsigned int length);
-void reset_sht();
-void startSensors();
+void mqtt_callback(char *topic, byte *payload, unsigned int length);
+void set_sht_pins(byte state);
+void start_sensors();
 void round_robin_read_sensors();
 void setup();
 void loop();
 #line 9 "/Users/Edward/Desktop/WRIST_Firmware/src/WRIST_Firmware.ino"
-#define ALPHA         0.5
+#define ALPHA           0.5
 
-#define LOX1_ADDRESS  0x30
-#define LOX2_ADDRESS  0x31
-#define LOX3_ADDRESS  0x32
-#define LOX4_ADDRESS  0x33
-#define LOX5_ADDRESS  0x34
-#define LOX6_ADDRESS  0x35
-#define LOX7_ADDRESS  0x36
-#define LOX8_ADDRESS  0x37
-#define LOX9_ADDRESS  0x38
-#define LOX10_ADDRESS 0x39
+// addresses of the sensors
+#define LOX1_ADDRESS    0x30
+#define LOX2_ADDRESS    0x31
+#define LOX3_ADDRESS    0x32
+#define LOX4_ADDRESS    0x33
+#define LOX5_ADDRESS    0x34
+#define LOX6_ADDRESS    0x35
+// MAX17043_ADDRESS is 0x36, so we cannot use 0x36
+#define LOX7_ADDRESS    0x37
+#define LOX8_ADDRESS    0x38
+#define LOX9_ADDRESS    0x39
+#define LOX10_ADDRESS   0x3A
 
-// set the pins to shutdown
-#define SHT_LOX1  D2
-#define SHT_LOX2  D3
-#define SHT_LOX3  D4
-#define SHT_LOX4  D5
-#define SHT_LOX5  D6
-#define SHT_LOX6  A0
-#define SHT_LOX7  A1
-#define SHT_LOX8  A2
-#define SHT_LOX9  A3
-#define SHT_LOX10 A4
+// shutdown pins
+#define SHT_LOX1    D2
+#define SHT_LOX2    D3
+#define SHT_LOX3    D4
+#define SHT_LOX4    D5
+#define SHT_LOX5    D6
+#define SHT_LOX6    A0
+#define SHT_LOX7    A1
+#define SHT_LOX8    A2
+#define SHT_LOX9    A3
+#define SHT_LOX10   A4
 
 // MQTT defines
-#define MQTT_HOST "mqtt.eclipseprojects.io"
-#define MQTT_PORT 1883
-#define MQTT_NAME ("wrist-watch" + String(Time.now()))
+#define MQTT_HOST   "mqtt.eclipseprojects.io"
+#define MQTT_PORT   1883
+#define MQTT_NAME   ("wrist-watch" + String(Time.now()))
 
-#define DATA_TOPIC "wrist/data/sensors"
-
-MQTT client(MQTT_HOST, MQTT_PORT, callback);
+#define DATA_TOPIC  "wrist/data/sensors"
+#define BATT_TOPIC  "wrist/batt/sensors"
+#define BATT_TOPIC_ASK  "wrist/batt/ask"
+#define CTRL_TOPIC  "wrist/ctrl/sensors"
 
 // objects for the VL6180X
-Adafruit_VL6180X lox1   = Adafruit_VL6180X();
-Adafruit_VL6180X lox2   = Adafruit_VL6180X();
-Adafruit_VL6180X lox3   = Adafruit_VL6180X();
-Adafruit_VL6180X lox4   = Adafruit_VL6180X();
-Adafruit_VL6180X lox5   = Adafruit_VL6180X();
-Adafruit_VL6180X lox6   = Adafruit_VL6180X();
-Adafruit_VL6180X lox7   = Adafruit_VL6180X();
-Adafruit_VL6180X lox8   = Adafruit_VL6180X();
-Adafruit_VL6180X lox9   = Adafruit_VL6180X();
-Adafruit_VL6180X lox10  = Adafruit_VL6180X();
+Adafruit_VL6180X lox1  = Adafruit_VL6180X();
+Adafruit_VL6180X lox2  = Adafruit_VL6180X();
+Adafruit_VL6180X lox3  = Adafruit_VL6180X();
+Adafruit_VL6180X lox4  = Adafruit_VL6180X();
+Adafruit_VL6180X lox5  = Adafruit_VL6180X();
+Adafruit_VL6180X lox6  = Adafruit_VL6180X();
+Adafruit_VL6180X lox7  = Adafruit_VL6180X();
+Adafruit_VL6180X lox8  = Adafruit_VL6180X();
+Adafruit_VL6180X lox9  = Adafruit_VL6180X();
+Adafruit_VL6180X lox10 = Adafruit_VL6180X();
 
 Adafruit_VL6180X *sensors[] = {&lox1, &lox2, &lox3, &lox4, &lox5, &lox6, &lox7, &lox8, &lox9, &lox10};
 
@@ -73,34 +76,52 @@ uint8_t sensor_idx = 0;
 uint8_t sensor_ranges_prev[COUNT_SENSORS];
 uint8_t sensor_status[COUNT_SENSORS];
 
+// objects for MQTT
+MQTT client(MQTT_HOST, MQTT_PORT, mqtt_callback);
 char data[sizeof(uint32_t) + COUNT_SENSORS];
 
-void callback(char *topic, byte *payload, unsigned int length) {
-    Serial.println(topic);
+void mqtt_callback(char *topic, byte *payload, unsigned int length) {
+    // Serial.println(topic);
+    if (!strcmp(topic, BATT_TOPIC_ASK)) {
+        double voltage = lipo.getVoltage();
+        double soc = lipo.getSOC();
+
+        String batt_data = "";
+        uint32_t timestamp = Time.now();
+        batt_data += String(timestamp) + ",";
+        batt_data += String(voltage) + ",";
+        batt_data += String(soc);
+
+#ifdef PRINT_BATT
+        Serial.print("Voltage: ");
+        Serial.print(voltage);
+        Serial.println(" V");
+
+        Serial.print("Percentage: ");
+        Serial.print(soc);
+        Serial.println(" %");
+        Serial.println();
+#endif
+
+        if (client.isConnected()) {
+            client.publish(BATT_TOPIC, batt_data);
+        }
+    }
 }
 
-void reset_sht() {
-  for (int pin = SHT_LOX1; pin <= SHT_LOX10; pin++) {
-    digitalWrite(pin, LOW);
-  }
+void set_sht_pins(byte state) {
+    for (int pin = SHT_LOX1; pin <= SHT_LOX10; pin++) {
+        digitalWrite(pin, state);
+    }
 }
 
-void startSensors() {
+void start_sensors() {
     // all reset
-    reset_sht();
+    set_sht_pins(LOW);
     delay(10);
 
     // all unreset
-    digitalWrite(SHT_LOX1, HIGH);
-    digitalWrite(SHT_LOX2, HIGH);
-    digitalWrite(SHT_LOX3, HIGH);
-    digitalWrite(SHT_LOX4, HIGH);
-    digitalWrite(SHT_LOX5, HIGH);
-    digitalWrite(SHT_LOX6, HIGH);
-    digitalWrite(SHT_LOX7, HIGH);
-    digitalWrite(SHT_LOX8, HIGH);
-    digitalWrite(SHT_LOX9, HIGH);
-    digitalWrite(SHT_LOX10, HIGH);
+    set_sht_pins(HIGH);
     delay(10);
 
     // activating LOX1 and reseting LOX2
@@ -251,13 +272,15 @@ void setup() {
         delay(1);
     }
 
-    Serial.println("Connecting...");
+    Serial.println("Connecting to MQTT host...");
     client.connect(MQTT_NAME);
     while (!client.isConnected()) {
-        Serial.println("Connecting...");
+        Serial.println("Connecting to MQTT host...");
         client.connect(MQTT_NAME);
         delay(1000);
     }
+
+    client.subscribe(BATT_TOPIC_ASK);
 
     pinMode(SHT_LOX1, OUTPUT);
     pinMode(SHT_LOX2, OUTPUT);
@@ -272,12 +295,18 @@ void setup() {
 
     Serial.println("Shutdown pins inited...");
 
-    reset_sht();
-    Serial.println("All in reset mode...(pins are low)");
-
-
+    set_sht_pins(LOW);
     Serial.println("Starting...");
-    startSensors();
+    start_sensors();
+
+    // initialize the MAX17043 LiPo fuel gauge
+    lipo.begin();
+    // quick start restarts the MAX17043 in hopes of getting a more accurate guess for the SOC.
+    lipo.quickStart();
+    // set alert threshold to 20%.
+    lipo.setThreshold(20);
+
+    Serial.println("Ready!");
 }
 
 void loop() {
@@ -296,7 +325,9 @@ void loop() {
         uint32_t timestamp = Time.now();
         *(uint32_t *)(&data) = timestamp;
 
-        if (client.isConnected()) client.publish(DATA_TOPIC, data);
+        if (client.isConnected()) {
+            client.publish(DATA_TOPIC, data);
+        }
     }
 
     if (client.isConnected()) client.loop();
