@@ -6,7 +6,7 @@
 // #define PRINT_DATA
 // #define PRINT_BATT
 
-#define ALPHA           0.5
+#define ALPHA           0.3
 
 // addresses of the sensors
 #define LOX1_ADDRESS    0x30
@@ -302,7 +302,7 @@ void loop() {
     if (sensor_idx == COUNT_SENSORS - 1) {
 #ifdef PRINT_DATA
         for (int i = 0; i < COUNT_SENSORS; i++) {
-            if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(data[i], DEC);
+            if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(data[sizeof(uint32_t) + i], DEC);
             else Serial.print("###");
 
             if (i != COUNT_SENSORS-1) Serial.print(" : ");
