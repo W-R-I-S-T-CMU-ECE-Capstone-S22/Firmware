@@ -6,8 +6,6 @@
 // #define PRINT_DATA
 // #define PRINT_BATT
 
-#define ALPHA           0.3
-
 // addresses of the sensors
 #define LOX1_ADDRESS    0x30
 #define LOX2_ADDRESS    0x31
@@ -28,8 +26,8 @@
 #define SHT_LOX4    D5
 #define SHT_LOX5    D6
 #define SHT_LOX6    A0
-#define SHT_LOX7    A1
-#define SHT_LOX8    A2
+#define SHT_LOX7    A2 // made a mistake soldering...
+#define SHT_LOX8    A5 // made a mistake soldering...
 #define SHT_LOX9    A3
 #define SHT_LOX10   A4
 
@@ -60,7 +58,6 @@ Adafruit_VL6180X *sensors[] = {&lox1, &lox2, &lox3, &lox4, &lox5, &lox6, &lox7, 
 const uint8_t COUNT_SENSORS = sizeof(sensors) / sizeof(sensors[0]);
 
 uint8_t sensor_idx = 0;
-uint8_t sensor_ranges_prev[COUNT_SENSORS];
 uint8_t sensor_status[COUNT_SENSORS];
 
 // objects for MQTT
@@ -97,9 +94,16 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
 }
 
 void set_sht_pins(byte state) {
-    for (int pin = SHT_LOX1; pin <= SHT_LOX10; pin++) {
-        digitalWrite(pin, state);
-    }
+    digitalWrite(SHT_LOX1, state);
+    digitalWrite(SHT_LOX2, state);
+    digitalWrite(SHT_LOX3, state);
+    digitalWrite(SHT_LOX4, state);
+    digitalWrite(SHT_LOX5, state);
+    digitalWrite(SHT_LOX6, state);
+    digitalWrite(SHT_LOX7, state);
+    digitalWrite(SHT_LOX8, state);
+    digitalWrite(SHT_LOX9, state);
+    digitalWrite(SHT_LOX10, state);
 }
 
 void start_sensors() {
@@ -111,7 +115,7 @@ void start_sensors() {
     set_sht_pins(HIGH);
     delay(10);
 
-    // activating LOX1 and reseting LOX2
+    // activating LOX1
     digitalWrite(SHT_LOX1, HIGH);
     digitalWrite(SHT_LOX2, LOW);
     digitalWrite(SHT_LOX3, LOW);
@@ -237,12 +241,7 @@ void round_robin_read_sensors() {
 
     sensor_status[sensor_idx] = status_lox;
     if (status_lox == VL6180X_ERROR_NONE) {
-        // apply EWMA filter
-        uint8_t val = ALPHA * range_lox + (1.0 - ALPHA) * sensor_ranges_prev[sensor_idx];
-
-        // save EWMA filtered value
-        data[sizeof(uint32_t) + sensor_idx] = val;
-        sensor_ranges_prev[sensor_idx] = val;
+        data[sizeof(uint32_t) + sensor_idx] = range_lox;
     }
     else {
         data[sizeof(uint32_t) + sensor_idx] = -1;
