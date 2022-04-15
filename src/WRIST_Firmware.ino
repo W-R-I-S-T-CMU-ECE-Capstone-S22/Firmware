@@ -60,9 +60,13 @@ const uint8_t COUNT_SENSORS = sizeof(sensors) / sizeof(sensors[0]);
 uint8_t sensor_idx = 0;
 uint8_t sensor_status[COUNT_SENSORS];
 
-// objects for MQTT
-MQTT client(MQTT_HOST, MQTT_PORT, mqtt_callback);
-char data[sizeof(uint32_t) + COUNT_SENSORS];
+// telnet defaults to port 23
+TCPServer server = TCPServer(23);
+TCPClient client;
+
+char data[1 + COUNT_SENSORS];
+
+uint32_t prevTime = 0;
 
 void mqtt_callback(char *topic, byte *payload, unsigned int length) {
     // Serial.println(topic);
@@ -87,9 +91,9 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
         Serial.println();
 #endif
 
-        if (client.isConnected()) {
-            client.publish(BATT_TOPIC, batt_data);
-        }
+        // if (client.connected()) {
+        //     client.publish(BATT_TOPIC, batt_data);
+        // }
     }
 }
 
@@ -241,10 +245,10 @@ void round_robin_read_sensors() {
 
     sensor_status[sensor_idx] = status_lox;
     if (status_lox == VL6180X_ERROR_NONE) {
-        data[sizeof(uint32_t) + sensor_idx] = range_lox;
+        data[1 + sensor_idx] = range_lox;
     }
     else {
-        data[sizeof(uint32_t) + sensor_idx] = -1;
+        data[1 + sensor_idx] = -1;
     }
 
     sensor_idx = (sensor_idx + 1) % COUNT_SENSORS;
@@ -258,15 +262,12 @@ void setup() {
         delay(1);
     }
 
-    Serial.println("Connecting to MQTT host...");
-    client.connect(MQTT_NAME);
-    while (!client.isConnected()) {
-        Serial.println("Connecting to MQTT host...");
-        client.connect(MQTT_NAME);
-        delay(1000);
-    }
+    Serial.println("Listening to TCP clients...");
 
-    client.subscribe(BATT_TOPIC_ASK);
+    // start listening for clients
+    server.begin();
+
+    Serial.printf("localIP = %s\n", WiFi.localIP().toString().c_str());
 
     pinMode(SHT_LOX1, OUTPUT);
     pinMode(SHT_LOX2, OUTPUT);
@@ -298,23 +299,27 @@ void setup() {
 void loop() {
     round_robin_read_sensors();
 
-    if (sensor_idx == COUNT_SENSORS - 1) {
+    uint32_t currTime = millis();
+    // if (currTime - prevTime >= 100) {
+    if (client.connected()) {
+        if (sensor_idx == COUNT_SENSORS - 1) {
 #ifdef PRINT_DATA
-        for (int i = 0; i < COUNT_SENSORS; i++) {
-            if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(data[sizeof(uint32_t) + i], DEC);
-            else Serial.print("###");
+            for (int i = 0; i < COUNT_SENSORS; i++) {
+                if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(data[1 + i], DEC);
+                else Serial.print("###");
 
-            if (i != COUNT_SENSORS-1) Serial.print(" : ");
-        }
-        Serial.println();
+                if (i != COUNT_SENSORS-1) Serial.print(" : ");
+            }
+            Serial.println();
 #endif
-        uint32_t timestamp = Time.now();
-        *(uint32_t *)(&data) = timestamp;
+            data[0] = (uint8_t)(currTime - prevTime);
 
-        if (client.isConnected()) {
-            client.publish(DATA_TOPIC, data);
+            server.write(data);
+
+            prevTime = currTime;
         }
     }
-
-    if (client.isConnected()) client.loop();
+    else {
+        client = server.available();
+    }
 }
