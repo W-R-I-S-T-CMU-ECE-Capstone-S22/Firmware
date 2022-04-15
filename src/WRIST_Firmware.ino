@@ -62,7 +62,9 @@ uint8_t sensor_status[COUNT_SENSORS];
 
 // objects for MQTT
 MQTT client(MQTT_HOST, MQTT_PORT, mqtt_callback);
-char data[sizeof(uint32_t) + COUNT_SENSORS];
+char data[1 + COUNT_SENSORS];
+
+uint32_t prevTime = 0;
 
 void mqtt_callback(char *topic, byte *payload, unsigned int length) {
     // Serial.println(topic);
@@ -241,10 +243,10 @@ void round_robin_read_sensors() {
 
     sensor_status[sensor_idx] = status_lox;
     if (status_lox == VL6180X_ERROR_NONE) {
-        data[sizeof(uint32_t) + sensor_idx] = range_lox;
+        data[1 + sensor_idx] = range_lox;
     }
     else {
-        data[sizeof(uint32_t) + sensor_idx] = -1;
+        data[1 + sensor_idx] = -1;
     }
 
     sensor_idx = (sensor_idx + 1) % COUNT_SENSORS;
@@ -298,22 +300,25 @@ void setup() {
 void loop() {
     round_robin_read_sensors();
 
+    uint32_t currTime = millis();
+    // if (currTime - prevTime >= 100) {
     if (sensor_idx == COUNT_SENSORS - 1) {
 #ifdef PRINT_DATA
         for (int i = 0; i < COUNT_SENSORS; i++) {
-            if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(data[sizeof(uint32_t) + i], DEC);
+            if (sensor_status[i] == VL6180X_ERROR_NONE) Serial.print(data[1 + i], DEC);
             else Serial.print("###");
 
             if (i != COUNT_SENSORS-1) Serial.print(" : ");
         }
         Serial.println();
 #endif
-        uint32_t timestamp = Time.now();
-        *(uint32_t *)(&data) = timestamp;
+        data[0] = (uint8_t)(currTime - prevTime);
 
         if (client.isConnected()) {
             client.publish(DATA_TOPIC, data);
         }
+
+        prevTime = currTime;
     }
 
     if (client.isConnected()) client.loop();
